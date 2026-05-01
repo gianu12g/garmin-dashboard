@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 import traceback
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify
@@ -11,6 +12,8 @@ load_dotenv()
 app = Flask(__name__)
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+GARMIN_EMAIL = os.environ.get("GARMIN_EMAIL", "")
+GARMIN_PASSWORD = os.environ.get("GARMIN_PASSWORD", "")
 GARMIN_TOKENSTORE = os.environ.get("GARMINTOKENS", os.path.expanduser("~/.garminconnect"))
 
 cached_data = None
@@ -18,8 +21,26 @@ cached_analysis = None
 last_update = None
 
 
+def _restore_tokens_from_env():
+    """If GARMIN_TOKENS_B64 env var exists, decode it to garmin_tokens.json in the token store."""
+    tokens_b64 = os.environ.get("GARMIN_TOKENS_B64", "")
+    if tokens_b64:
+        os.makedirs(GARMIN_TOKENSTORE, exist_ok=True)
+        token_path = os.path.join(GARMIN_TOKENSTORE, "garmin_tokens.json")
+        with open(token_path, "wb") as f:
+            f.write(base64.b64decode(tokens_b64))
+
+
+# Restore tokens on startup (for Render / cloud deploys)
+_restore_tokens_from_env()
+
+
 def get_garmin_client():
-    client = Garmin()
+    """Login to Garmin Connect. Tries saved tokens first, falls back to email/password."""
+    if GARMIN_EMAIL and GARMIN_PASSWORD:
+        client = Garmin(email=GARMIN_EMAIL, password=GARMIN_PASSWORD)
+    else:
+        client = Garmin()
     client.login(GARMIN_TOKENSTORE)
     return client
 
