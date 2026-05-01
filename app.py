@@ -1,4 +1,5 @@
 import os
+import gc
 import json
 import base64
 import traceback
@@ -49,7 +50,7 @@ def fetch_garmin_data():
     client = get_garmin_client()
     today = datetime.now().strftime("%Y-%m-%d")
 
-    activities_raw = client.get_activities(0, 50)
+    activities_raw = client.get_activities(0, 20)
     activities = []
     for a in activities_raw:
         act = {
@@ -65,6 +66,8 @@ def fetch_garmin_data():
             "steps": a.get("steps", 0) or 0,
         }
         activities.append(act)
+    del activities_raw
+    gc.collect()
 
     hr_summary = client.get_heart_rates(today)
     hr_data = {
@@ -137,6 +140,8 @@ def fetch_garmin_data():
             "load_ratio": load_ratio,
             "training_balance_feedback": balance_feedback,
         }
+    del training_status_raw
+    gc.collect()
 
     training_readiness_raw = client.get_training_readiness(today)
     training_readiness = {}
@@ -169,6 +174,8 @@ def fetch_garmin_data():
             "baseline_balanced_low": baseline.get("balancedLow", 0),
             "baseline_balanced_upper": baseline.get("balancedUpper", 0),
         }
+    del hrv_raw
+    gc.collect()
 
     try:
         # Single-day endpoint returns overallScore directly + classification as integer
@@ -236,9 +243,11 @@ def fetch_garmin_data():
     total_km_month = sum(a["distance_meters"] for a in running_activities if _is_this_month(a["start_time"])) / 1000
     runs_this_month = len([a for a in running_activities if _is_this_month(a["start_time"])])
 
+    del activities
+    gc.collect()
+
     return {
         "date": today,
-        "activities": activities,
         "running_activities": running_activities,
         "hr": hr_data,
         "sleep": sleep_data,
@@ -309,7 +318,7 @@ Genera:
 4. PROXIMA SEMANA (sugerencia de plan semanal)"""
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=1500,
         messages=[{"role": "user", "content": prompt}],
     )

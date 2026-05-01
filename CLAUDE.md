@@ -19,7 +19,7 @@
 
 - Backend: Flask (Python)
 - Frontend: Vanilla JS + Chart.js + marked.js (single `index.html` template)
-- AI analysis: Anthropic Claude (claude-sonnet-4-6)
+- AI analysis: Anthropic Claude (claude-haiku-4-5-20251001 for Render, can use claude-sonnet-4-6 locally)
 - Data source: Garmin Connect API via `garminconnect` library
 
 ## Key API Response Structures
