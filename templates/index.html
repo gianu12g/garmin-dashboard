@@ -398,8 +398,8 @@ function renderData(data, analysis) {
   sleepSub.textContent = d.sleep?.sleep_hours ? d.sleep.sleep_hours + 'h' : '';
   sleepSub.className = 'metric-sub ' + classifySleep(sleepVal);
 
-  document.getElementById('monthlyKm').textContent = d.monthly_km ? d.monthly_km + ' km' : '--';
-  document.getElementById('monthlyRuns').textContent = d.monthly_runs ? d.monthly_runs + ' carreras' : '';
+  document.getElementById('monthlyKm').textContent = (d.monthly_km != null ? d.monthly_km : '--') + ' km';
+  document.getElementById('monthlyRuns').textContent = (d.monthly_runs || 0) + ' carreras';
 
   const preds = d.race_predictions || {};
   const predKeys = Object.keys(preds);
