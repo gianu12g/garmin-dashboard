@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Garmin Dashboard - Running Performance</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #f8f7f4;
+    --bg-card: #ffffff;
+    --bg-secondary: #f1efe8;
+    --text: #1a1a1a;
+    --text-secondary: #5f5e5a;
+    --text-tertiary: #888780;
+    --border: rgba(0,0,0,0.08);
+    --blue: #378ADD;
+    --green: #1D9E75;
+    --red: #E24B4A;
+    --purple: #7F77DD;
+    --amber: #BA7517;
+    --amber-bg: #FAEEDA;
+    --amber-text: #633806;
+    --amber-label: #854F0B;
+    --teal: #1D9E75;
+    --coral: #D85A30;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a;
+      --bg-card: #2c2c2a;
+      --bg-secondary: #333331;
+      --text: #e8e6e0;
+      --text-secondary: #b4b2a9;
+      --text-tertiary: #888780;
+      --border: rgba(255,255,255,0.1);
+      --amber-bg: #412402;
+      --amber-text: #FAC775;
+      --amber-label: #EF9F27;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  .container { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  header h1 { font-size: 22px; font-weight: 500; }
+  .header-meta { font-size: 13px; color: var(--text-secondary); }
+
+  .update-btn {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    padding: 10px 24px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .update-btn:hover { opacity: 0.85; }
+  .update-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .update-btn .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: none;
+  }
+  .update-btn.loading .spinner { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 1.5rem;
+  }
+  .metric-card {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    padding: 1rem;
+  }
+  .metric-label { font-size: 13px; color: var(--text-secondary); }
+  .metric-value { font-size: 24px; font-weight: 500; margin-top: 2px; }
+  .metric-sub { font-size: 12px; margin-top: 2px; }
+  .metric-good { color: var(--green); }
+  .metric-warn { color: var(--coral); }
+  .metric-neutral { color: var(--text-secondary); }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: 500;
+    margin: 2rem 0 0.75rem;
+  }
+
+  .predictions-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 1rem;
+  }
+  .pred-card {
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    text-align: center;
+  }
+  .pred-label { font-size: 12px; color: var(--text-secondary); }
+  .pred-value { font-size: 18px; font-weight: 500; margin-top: 4px; }
+  .pred-pace { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  .records-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 1rem;
+  }
+  .record-card {
+    background: var(--amber-bg);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    text-align: center;
+  }
+  .record-label { font-size: 12px; color: var(--amber-label); }
+  .record-value { font-size: 18px; font-weight: 500; color: var(--amber-text); margin-top: 4px; }
+
+  .chart-container {
+    position: relative;
+    width: 100%;
+    height: 300px;
+    margin-bottom: 0.5rem;
+  }
+
+  .analysis-box {
+    background: var(--bg-card);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    margin-top: 2rem;
+    white-space: pre-wrap;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text);
+    display: none;
+  }
+  .analysis-box h3 {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 1rem;
+    color: var(--purple);
+  }
+
+  .loading-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .loading-box {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 2rem 3rem;
+    text-align: center;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+  }
+  .loading-box .big-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 1rem;
+  }
+
+  .error-box {
+    background: #FCEBEB;
+    border: 0.5px solid #F09595;
+    border-radius: var(--radius-sm);
+    padding: 1rem;
+    color: #791F1F;
+    margin-bottom: 1.5rem;
+    display: none;
+    font-size: 14px;
+  }
+
+  @media (max-width: 600px) {
+    .predictions-grid, .records-grid { grid-template-columns: repeat(2, 1fr); }
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    .container { padding: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container" id="app">
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-box">
+      <div class="big-spinner"></div>
+      <div>Cargando datos de Garmin...</div>
+    </div>
+  </div>
+
+  <div id="errorBox" class="error-box"></div>
+
+  <header>
+    <div>
+      <h1>Running performance</h1>
+      <div class="header-meta" id="lastUpdate">Cargando...</div>
+    </div>
+    <button class="update-btn" id="updateBtn" onclick="doUpdate()">
+      <span class="spinner"></span>
+      Actualizar + analisis IA
+    </button>
+  </header>
+
+  <div class="metrics-grid" id="metricsTop">
+    <div class="metric-card"><div class="metric-label">VO2max</div><div class="metric-value" id="vo2max">--</div><div class="metric-sub metric-good" id="vo2label"></div></div>
+    <div class="metric-card"><div class="metric-label">FC reposo</div><div class="metric-value" id="rhr">--</div><div class="metric-sub metric-good" id="rhrSub"></div></div>
+    <div class="metric-card"><div class="metric-label">HRV semanal</div><div class="metric-value" id="hrv">--</div><div class="metric-sub metric-good" id="hrvSub"></div></div>
+    <div class="metric-card"><div class="metric-label">Endurance</div><div class="metric-value" id="endurance">--</div><div class="metric-sub metric-good" id="enduranceSub"></div></div>
+  </div>
+
+  <div class="metrics-grid">
+    <div class="metric-card"><div class="metric-label">Training status</div><div class="metric-value" id="trainStatus" style="font-size:18px;">--</div><div class="metric-sub" id="trainStatusSub"></div></div>
+    <div class="metric-card"><div class="metric-label">Readiness</div><div class="metric-value" id="readiness">--</div><div class="metric-sub" id="readinessSub"></div></div>
+    <div class="metric-card"><div class="metric-label">Sleep score</div><div class="metric-value" id="sleepScore">--</div><div class="metric-sub" id="sleepSub"></div></div>
+    <div class="metric-card"><div class="metric-label">Km este mes</div><div class="metric-value" id="monthlyKm">--</div><div class="metric-sub metric-neutral" id="monthlyRuns"></div></div>
+  </div>
+
+  <div class="section-title">Predicciones de carrera</div>
+  <div class="predictions-grid" id="predictions">
+    <div class="pred-card"><div class="pred-label">5K</div><div class="pred-value" id="pred5k">--</div><div class="pred-pace" id="pace5k"></div></div>
+    <div class="pred-card"><div class="pred-label">10K</div><div class="pred-value" id="pred10k">--</div><div class="pred-pace" id="pace10k"></div></div>
+    <div class="pred-card"><div class="pred-label">21K</div><div class="pred-value" id="pred21k">--</div><div class="pred-pace" id="pace21k"></div></div>
+    <div class="pred-card"><div class="pred-label">42K</div><div class="pred-value" id="pred42k">--</div><div class="pred-pace" id="pace42k"></div></div>
+  </div>
+
+  <div class="section-title">Records personales</div>
+  <div class="records-grid" id="records"></div>
+
+  <div class="section-title">Pace por carrera</div>
+  <div class="chart-container"><canvas id="paceChart"></canvas></div>
+
+  <div class="section-title">Distancia por carrera</div>
+  <div class="chart-container"><canvas id="distChart"></canvas></div>
+
+  <div class="section-title">FC promedio por carrera</div>
+  <div class="chart-container"><canvas id="hrChart"></canvas></div>
+
+  <div class="analysis-box" id="analysisBox">
+    <h3>Analisis y recomendaciones</h3>
+    <div id="analysisContent"></div>
+  </div>
+</div>
+
+<script>
+let paceChartInstance = null;
+let distChartInstance = null;
+let hrChartInstance = null;
+
+function paceStr(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function classifyVO2(v) {
+  if (v >= 50) return ['Excelente', 'metric-good'];
+  if (v >= 45) return ['Muy bueno', 'metric-good'];
+  if (v >= 40) return ['Bueno', 'metric-neutral'];
+  return ['Mejorable', 'metric-warn'];
+}
+
+function classifyReadiness(v) {
+  if (v >= 70) return ['Alto', 'metric-good'];
+  if (v >= 50) return ['Moderado', 'metric-neutral'];
+  return ['Bajo - descansar', 'metric-warn'];
+}
+
+function classifySleep(v) {
+  if (v >= 80) return 'metric-good';
+  if (v >= 60) return 'metric-warn';
+  return 'metric-warn';
+}
+
+function renderData(data, analysis) {
+  const d = data;
+
+  const vo2 = d.training_status?.vo2_max || 0;
+  const [vo2Label, vo2Class] = classifyVO2(vo2);
+  document.getElementById('vo2max').textContent = vo2 || '--';
+  const vo2Sub = document.getElementById('vo2label');
+  vo2Sub.textContent = vo2Label;
+  vo2Sub.className = 'metric-sub ' + vo2Class;
+
+  document.getElementById('rhr').textContent = d.hr?.resting_hr ? d.hr.resting_hr + ' bpm' : '--';
+  document.getElementById('rhrSub').textContent = '';
+
+  const hrvVal = d.hrv?.weekly_avg || 0;
+  document.getElementById('hrv').textContent = hrvVal ? hrvVal + ' ms' : '--';
+  const hrvSub = document.getElementById('hrvSub');
+  hrvSub.textContent = d.hrv?.status || '';
+  hrvSub.className = 'metric-sub ' + (d.hrv?.status === 'BALANCED' ? 'metric-good' : 'metric-warn');
+
+  const endVal = d.endurance?.current_score || 0;
+  document.getElementById('endurance').textContent = endVal || '--';
+  const endSub = document.getElementById('enduranceSub');
+  const classMap = {well_trained:'Bien entrenado',trained:'Entrenado',expert:'Experto',superior:'Superior',elite:'Elite'};
+  endSub.textContent = classMap[d.endurance?.classification] || d.endurance?.classification || '';
+
+  const tsFeedback = d.training_status?.training_status_feedback || '';
+  const tsMap = {PRODUCTIVE_3:'Productivo',PRODUCTIVE_2:'Productivo',PRODUCTIVE_1:'Productivo',MAINTAINING:'Manteniendo',RECOVERY:'Recuperando',UNPRODUCTIVE:'Improductivo',OVERREACHING:'Sobreentrenando',DETRAINING:'Desentrenando'};
+  document.getElementById('trainStatus').textContent = tsMap[tsFeedback] || tsFeedback || '--';
+  const tsSub = document.getElementById('trainStatusSub');
+  const lr = d.training_status?.load_ratio || 0;
+  tsSub.textContent = lr ? 'ACWR: ' + lr : '';
+  tsSub.className = 'metric-sub ' + (lr >= 0.8 && lr <= 1.3 ? 'metric-good' : 'metric-warn');
+
+  const readScore = d.training_readiness?.score || 0;
+  const [readLabel, readClass] = classifyReadiness(readScore);
+  document.getElementById('readiness').textContent = readScore || '--';
+  const readSub = document.getElementById('readinessSub');
+  readSub.textContent = readLabel;
+  readSub.className = 'metric-sub ' + readClass;
+
+  const sleepVal = d.sleep?.sleep_score || 0;
+  document.getElementById('sleepScore').textContent = sleepVal || '--';
+  const sleepSub = document.getElementById('sleepSub');
+  sleepSub.textContent = d.sleep?.sleep_hours ? d.sleep.sleep_hours + 'h' : '';
+  sleepSub.className = 'metric-sub ' + classifySleep(sleepVal);
+
+  document.getElementById('monthlyKm').textContent = d.monthly_km ? d.monthly_km + ' km' : '--';
+  document.getElementById('monthlyRuns').textContent = d.monthly_runs ? d.monthly_runs + ' carreras' : '';
+
+  const preds = d.race_predictions || {};
+  const predKeys = Object.keys(preds);
+  const predEls = [
+    {el: 'pred5k', pace: 'pace5k', dist: 5, keys: ['5K','5k']},
+    {el: 'pred10k', pace: 'pace10k', dist: 10, keys: ['10K','10k']},
+    {el: 'pred21k', pace: 'pace21k', dist: 21.0975, keys: ['Half Marathon','half_marathon','21K']},
+    {el: 'pred42k', pace: 'pace42k', dist: 42.195, keys: ['Marathon','marathon','42K']},
+  ];
+  predEls.forEach(p => {
+    let val = null;
+    for (const k of p.keys) { if (preds[k]) { val = preds[k]; break; } }
+    document.getElementById(p.el).textContent = val || '--';
+  });
+
+  const recordsContainer = document.getElementById('records');
+  recordsContainer.innerHTML = '';
+  const prs = d.personal_records || [];
+  const prLabelMap = {fastest1K:'1K',fastest5K:'5K',fastest10K:'10K',fastestMile:'Milla',fastestHalfMarathon:'21K',longestRun:'Mas largo',
+    'Fastest 1K':'1K','Fastest 5K':'5K','Fastest 10K':'10K','Fastest Half Marathon':'21K','Longest Run':'Mas largo'};
+  const showPRs = prs.filter(p => prLabelMap[p.type]).slice(0, 4);
+  showPRs.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'record-card';
+    card.innerHTML = '<div class="record-label">' + (prLabelMap[p.type] || p.type) + '</div><div class="record-value">' + p.value + '</div>';
+    recordsContainer.appendChild(card);
+  });
+
+  renderCharts(d.running_activities || []);
+
+  if (analysis) {
+    document.getElementById('analysisBox').style.display = 'block';
+    document.getElementById('analysisContent').textContent = analysis;
+  }
+}
+
+function renderCharts(runs) {
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const tickColor = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
+
+  const recent = runs.slice(0, 20).reverse();
+  const labels = recent.map(r => {
+    const d = r.start_time ? r.start_time.substring(5, 10).replace('-', '/') : '?';
+    return d;
+  });
+
+  const paces = recent.map(r => {
+    if (!r.distance_meters || r.distance_meters < 100) return 0;
+    const dur = r.moving_duration_seconds || r.duration_seconds;
+    return dur / (r.distance_meters / 1000);
+  });
+
+  const dists = recent.map(r => Math.round(r.distance_meters / 100) / 10);
+  const hrs = recent.map(r => r.avg_hr_bpm || 0);
+
+  if (paceChartInstance) paceChartInstance.destroy();
+  if (distChartInstance) distChartInstance.destroy();
+  if (hrChartInstance) hrChartInstance.destroy();
+
+  paceChartInstance = new Chart(document.getElementById('paceChart'), {
+    type: 'line',
+    data: {labels, datasets: [{label:'Pace', data: paces, borderColor:'#378ADD', backgroundColor:'rgba(55,138,221,0.1)', fill:true, tension:0.3, pointRadius:4, pointBackgroundColor:'#378ADD'}]},
+    options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{
+      x:{ticks:{autoSkip:true, maxRotation:45, color:tickColor, font:{size:11}}, grid:{display:false}},
+      y:{reverse:true, ticks:{callback:v=>paceStr(v), color:tickColor, font:{size:11}}, grid:{color:gridColor}}
+    }}
+  });
+
+  distChartInstance = new Chart(document.getElementById('distChart'), {
+    type: 'bar',
+    data: {labels, datasets: [{label:'Distancia', data: dists, backgroundColor:'#1D9E75', borderRadius:4}]},
+    options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{
+      x:{ticks:{autoSkip:true, maxRotation:45, color:tickColor, font:{size:11}}, grid:{display:false}},
+      y:{ticks:{callback:v=>v+'km', color:tickColor, font:{size:11}}, grid:{color:gridColor}}
+    }}
+  });
+
+  hrChartInstance = new Chart(document.getElementById('hrChart'), {
+    type: 'line',
+    data: {labels, datasets: [{label:'HR', data: hrs, borderColor:'#E24B4A', backgroundColor:'rgba(226,75,74,0.1)', fill:true, tension:0.3, pointRadius:4, pointBackgroundColor:'#E24B4A'}]},
+    options: {responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{
+      x:{ticks:{autoSkip:true, maxRotation:45, color:tickColor, font:{size:11}}, grid:{display:false}},
+      y:{min:120, max:200, ticks:{callback:v=>v+' bpm', color:tickColor, font:{size:11}}, grid:{color:gridColor}}
+    }}
+  });
+}
+
+async function loadData() {
+  try {
+    const res = await fetch('/api/data');
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    document.getElementById('loadingOverlay').style.display = 'none';
+    renderData(json.data, json.analysis);
+    if (json.last_update) {
+      const dt = new Date(json.last_update);
+      document.getElementById('lastUpdate').textContent = 'Actualizado: ' + dt.toLocaleString('es-AR');
+    }
+  } catch (e) {
+    document.getElementById('loadingOverlay').style.display = 'none';
+    document.getElementById('errorBox').style.display = 'block';
+    document.getElementById('errorBox').textContent = 'Error cargando datos: ' + e.message;
+  }
+}
+
+async function doUpdate() {
+  const btn = document.getElementById('updateBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  document.getElementById('errorBox').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/update', {method: 'POST'});
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    renderData(json.data, json.analysis);
+    if (json.last_update) {
+      const dt = new Date(json.last_update);
+      document.getElementById('lastUpdate').textContent = 'Actualizado: ' + dt.toLocaleString('es-AR');
+    }
+  } catch (e) {
+    document.getElementById('errorBox').style.display = 'block';
+    document.getElementById('errorBox').textContent = 'Error actualizando: ' + e.message;
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
