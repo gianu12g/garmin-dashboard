@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Garmin Dashboard - Running Performance</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
 <style>
   :root {
     --bg: #f8f7f4;
@@ -158,17 +159,61 @@
     border-radius: var(--radius);
     padding: 1.5rem;
     margin-top: 2rem;
-    white-space: pre-wrap;
     font-size: 14px;
     line-height: 1.7;
     color: var(--text);
     display: none;
   }
-  .analysis-box h3 {
+  .analysis-box > h3 {
     font-size: 16px;
     font-weight: 500;
     margin-bottom: 1rem;
     color: var(--purple);
+  }
+  .analysis-content h1, .analysis-content h2, .analysis-content h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .analysis-content h1 { font-size: 18px; color: var(--purple); }
+  .analysis-content h2 { font-size: 16px; color: var(--blue); }
+  .analysis-content h3 { font-size: 15px; }
+  .analysis-content p { margin: 0.5rem 0; }
+  .analysis-content ul, .analysis-content ol { margin: 0.5rem 0 0.5rem 1.5rem; }
+  .analysis-content li { margin: 0.25rem 0; }
+  .analysis-content strong { font-weight: 600; }
+  .analysis-content hr { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+  .analysis-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+    font-size: 13px;
+  }
+  .analysis-content th, .analysis-content td {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    text-align: left;
+  }
+  .analysis-content th {
+    background: var(--bg-secondary);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .analysis-content blockquote {
+    border-left: 3px solid var(--blue);
+    padding: 0.5rem 1rem;
+    margin: 0.75rem 0;
+    background: var(--bg-secondary);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+  .analysis-content code {
+    background: var(--bg-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
   }
 
   .loading-overlay {
@@ -273,7 +318,7 @@
 
   <div class="analysis-box" id="analysisBox">
     <h3>Analisis y recomendaciones</h3>
-    <div id="analysisContent"></div>
+    <div id="analysisContent" class="analysis-content"></div>
   </div>
 </div>
 
@@ -359,9 +404,9 @@ function renderData(data, analysis) {
   const preds = d.race_predictions || {};
   const predKeys = Object.keys(preds);
   const predEls = [
-    {el: 'pred5k', pace: 'pace5k', dist: 5, keys: ['5K','5k']},
-    {el: 'pred10k', pace: 'pace10k', dist: 10, keys: ['10K','10k']},
-    {el: 'pred21k', pace: 'pace21k', dist: 21.0975, keys: ['Half Marathon','half_marathon','21K']},
+    {el: 'pred5k', pace: 'pace5k', dist: 5, keys: ['5K','5k','5 Kilometer']},
+    {el: 'pred10k', pace: 'pace10k', dist: 10, keys: ['10K','10k','10 Kilometer']},
+    {el: 'pred21k', pace: 'pace21k', dist: 21.0975, keys: ['Half Marathon','half_marathon','Half-Marathon','21K']},
     {el: 'pred42k', pace: 'pace42k', dist: 42.195, keys: ['Marathon','marathon','42K']},
   ];
   predEls.forEach(p => {
@@ -387,7 +432,7 @@ function renderData(data, analysis) {
 
   if (analysis) {
     document.getElementById('analysisBox').style.display = 'block';
-    document.getElementById('analysisContent').textContent = analysis;
+    document.getElementById('analysisContent').innerHTML = marked.parse(analysis);
   }
 }
 

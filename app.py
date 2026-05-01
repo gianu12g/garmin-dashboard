@@ -27,8 +27,6 @@ def get_garmin_client():
 def fetch_garmin_data():
     client = get_garmin_client()
     today = datetime.now().strftime("%Y-%m-%d")
-    thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-    ninety_days_ago = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
 
     activities_raw = client.get_activities(0, 50)
     activities = []
@@ -53,11 +51,6 @@ def fetch_garmin_data():
         "max_hr": hr_summary.get("maxHeartRate", 0),
         "min_hr": hr_summary.get("minHeartRate", 0),
     }
-
-    try:
-        last_7_avg = hr_summary.get("startTimestampLocal", None)
-    except Exception:
-        last_7_avg = None
 
     sleep_raw = client.get_sleep_data(today)
     sleep_data = {}
@@ -87,13 +80,41 @@ def fetch_garmin_data():
     training_status = {}
     if training_status_raw:
         ts = training_status_raw[0] if isinstance(training_status_raw, list) else training_status_raw
+
+        # VO2max: nested under mostRecentVO2Max.generic
+        vo2_data = ts.get("mostRecentVO2Max", {}).get("generic", {})
+        vo2 = vo2_data.get("vo2MaxValue") or vo2_data.get("vo2MaxPreciseValue") or 0
+        if isinstance(vo2, float):
+            vo2 = round(vo2, 1)
+
+        # Training status & load: nested under mostRecentTrainingStatus.latestTrainingStatusData.<deviceId>
+        ts_feedback = ""
+        acute_load = 0
+        chronic_load = 0
+        load_ratio = 0
+        latest_ts = ts.get("mostRecentTrainingStatus", {}).get("latestTrainingStatusData", {})
+        for device_id, device_data in latest_ts.items():
+            ts_feedback = device_data.get("trainingStatusFeedbackPhrase", "")
+            atl = device_data.get("acuteTrainingLoadDTO", {})
+            acute_load = atl.get("dailyTrainingLoadAcute", 0)
+            chronic_load = atl.get("dailyTrainingLoadChronic", 0)
+            load_ratio = round(atl.get("dailyAcuteChronicWorkloadRatio", 0) or 0, 2)
+            break  # use first (primary) device
+
+        # Training balance: nested under mostRecentTrainingLoadBalance.metricsTrainingLoadBalanceDTOMap.<deviceId>
+        balance_feedback = ""
+        balance_map = ts.get("mostRecentTrainingLoadBalance", {}).get("metricsTrainingLoadBalanceDTOMap", {})
+        for device_id, device_data in balance_map.items():
+            balance_feedback = device_data.get("trainingBalanceFeedbackPhrase", "")
+            break
+
         training_status = {
-            "vo2_max": ts.get("vo2MaxValue", 0),
-            "training_status_feedback": ts.get("trainingStatusFeedback", ""),
-            "acute_load": ts.get("acuteTrainingLoad", 0),
-            "chronic_load": ts.get("chronicTrainingLoad", 0),
-            "load_ratio": round(ts.get("acuteChronicWorkloadRatio", 0) or 0, 2),
-            "training_balance_feedback": ts.get("trainingBalanceFeedback", ""),
+            "vo2_max": vo2,
+            "training_status_feedback": ts_feedback,
+            "acute_load": acute_load,
+            "chronic_load": chronic_load,
+            "load_ratio": load_ratio,
+            "training_balance_feedback": balance_feedback,
         }
 
     training_readiness_raw = client.get_training_readiness(today)
@@ -114,46 +135,66 @@ def fetch_garmin_data():
     hrv_raw = client.get_hrv_data(today)
     hrv_data = {}
     if hrv_raw:
+        # HRV summary is nested under hrvSummary
+        summary = hrv_raw.get("hrvSummary", {})
+        baseline = summary.get("baseline", {})
         hrv_data = {
-            "last_night_avg": hrv_raw.get("lastNightAvg", 0),
-            "last_night_5min_high": hrv_raw.get("lastNight5MinHigh", 0),
-            "weekly_avg": hrv_raw.get("weeklyAvg", 0),
-            "status": hrv_raw.get("status", ""),
-            "baseline_low": hrv_raw.get("baselineLowUpper", 0),
-            "baseline_balanced_low": hrv_raw.get("baselineBalancedLow", 0),
-            "baseline_balanced_upper": hrv_raw.get("baselineBalancedUpper", 0),
+            "last_night_avg": summary.get("lastNightAvg", 0),
+            "last_night_5min_high": summary.get("lastNight5MinHigh", 0),
+            "weekly_avg": summary.get("weeklyAvg", 0),
+            "status": summary.get("status", ""),
+            "feedback": summary.get("feedbackPhrase", ""),
+            "baseline_low": baseline.get("lowUpper", 0),
+            "baseline_balanced_low": baseline.get("balancedLow", 0),
+            "baseline_balanced_upper": baseline.get("balancedUpper", 0),
         }
 
     try:
-        endurance_raw = client.get_endurance_score(thirty_days_ago, today)
-        endurance_data = {
-            "current_score": endurance_raw.get("enduranceScore", {}).get("overallScore", 0),
-            "classification": endurance_raw.get("enduranceScore", {}).get("classificationKey", ""),
+        # Single-day endpoint returns overallScore directly + classification as integer
+        endurance_raw = client.get_endurance_score(today)
+        score = endurance_raw.get("overallScore", 0)
+        # classification is an integer ID, map to string key
+        classification_id = endurance_raw.get("classification", 0)
+        classification_map = {
+            1: "recreational", 2: "intermediate", 3: "trained",
+            4: "well_trained", 5: "expert", 6: "superior", 7: "elite",
         }
-    except Exception:
+        classification = classification_map.get(classification_id, "unknown")
+        endurance_data = {
+            "current_score": score,
+            "classification": classification,
+        }
+    except Exception as e:
         endurance_data = {"current_score": 0, "classification": "unknown"}
+
+    def _format_race_time(secs):
+        """Format seconds into M:SS or H:MM:SS."""
+        if not secs:
+            return None
+        secs = int(secs)
+        mins = secs // 60
+        s = secs % 60
+        if mins >= 60:
+            h = mins // 60
+            m = mins % 60
+            return f"{h}:{m:02d}:{s:02d}"
+        return f"{mins}:{s:02d}"
 
     try:
         race_raw = client.get_race_predictions()
         race_predictions = {}
-        if race_raw and isinstance(race_raw, list):
-            for r in race_raw:
-                dist = r.get("raceName", "")
-                secs = r.get("raceTimeSeconds", 0)
-                if dist and secs:
-                    mins = int(secs // 60)
-                    s = int(secs % 60)
-                    if mins >= 60:
-                        h = mins // 60
-                        m = mins % 60
-                        race_predictions[dist] = f"{h}:{m:02d}:{s:02d}"
-                    else:
-                        race_predictions[dist] = f"{mins}:{s:02d}"
-        elif race_raw and isinstance(race_raw, dict):
-            for key in ["5K", "10K", "Half Marathon", "Marathon"]:
-                val = race_raw.get(key, {})
-                if isinstance(val, dict):
-                    race_predictions[key] = val.get("time", "N/A")
+        if race_raw and isinstance(race_raw, dict):
+            # Flat dict with time5K, time10K, timeHalfMarathon, timeMarathon (seconds)
+            race_keys = {
+                "time5K": "5K",
+                "time10K": "10K",
+                "timeHalfMarathon": "Half Marathon",
+                "timeMarathon": "Marathon",
+            }
+            for raw_key, display_name in race_keys.items():
+                secs = race_raw.get(raw_key, 0)
+                if secs:
+                    race_predictions[display_name] = _format_race_time(secs)
     except Exception:
         race_predictions = {}
 
@@ -292,6 +333,43 @@ def api_update():
         return jsonify({"data": cached_data, "analysis": cached_analysis, "last_update": last_update.isoformat()})
     except Exception as e:
         traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/debug")
+def api_debug():
+    """Returns raw Garmin API responses to help debug field names."""
+    try:
+        client = get_garmin_client()
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        raw = {}
+        try:
+            ts = client.get_training_status(today)
+            raw["training_status"] = ts
+        except Exception as e:
+            raw["training_status_error"] = str(e)
+
+        try:
+            hrv = client.get_hrv_data(today)
+            raw["hrv_data"] = hrv
+        except Exception as e:
+            raw["hrv_data_error"] = str(e)
+
+        try:
+            endurance = client.get_endurance_score(today)
+            raw["endurance_score"] = endurance
+        except Exception as e:
+            raw["endurance_score_error"] = str(e)
+
+        try:
+            race = client.get_race_predictions()
+            raw["race_predictions"] = race
+        except Exception as e:
+            raw["race_predictions_error"] = str(e)
+
+        return jsonify(raw)
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
